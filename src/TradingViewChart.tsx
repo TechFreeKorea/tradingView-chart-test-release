@@ -156,7 +156,7 @@ const TradingViewChart: React.FC = () => {
   chartContainerRef.current.appendChild(toolTip);
 
    // 데이터 설정
-   const data: LineData[] = generateData(200).map((d) => {
+   const data: LineData[] = generateData(2000).map((d) => {
      console.log(
        '차트 데이터 시간:', new Date(d.time * 1000).toLocaleString('ko-KR'),
        'UTC:', new Date(d.time * 1000).toUTCString(),
