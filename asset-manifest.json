@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/tradingView-chart-test-release/static/css/main.2608d016.css",
+    "main.js": "/tradingView-chart-test-release/static/js/main.42d44fdd.js",
+    "static/js/453.c51181ce.chunk.js": "/tradingView-chart-test-release/static/js/453.c51181ce.chunk.js",
+    "index.html": "/tradingView-chart-test-release/index.html",
+    "main.2608d016.css.map": "/tradingView-chart-test-release/static/css/main.2608d016.css.map",
+    "main.42d44fdd.js.map": "/tradingView-chart-test-release/static/js/main.42d44fdd.js.map",
+    "453.c51181ce.chunk.js.map": "/tradingView-chart-test-release/static/js/453.c51181ce.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.2608d016.css",
+    "static/js/main.42d44fdd.js"
+  ]
+}
