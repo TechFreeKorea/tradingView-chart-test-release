@@ -1,5 +1,6 @@
 import React from 'react';
-import TradingViewChartTest from './TradingViewChart';  // 경로가 맞는지 확인하세요.
+import TradingViewChartTest from './TradingViewChart';
+import TradingViewChartBar from './TradingViewChartCandle';
 import "./App.css";
 
 const App: React.FC = () => {
@@ -8,8 +9,10 @@ const App: React.FC = () => {
       maxWidth:'1200px',
       margin:'2rem',
     }}>
-      <h1>TradingView Chart Test</h1>
+      <h1>TradingView Chart Test1</h1>
       <TradingViewChartTest />
+      <h1>TradingView Chart Test2</h1>
+      <TradingViewChartBar />
     </div>
   );
 };

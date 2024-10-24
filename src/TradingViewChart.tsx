@@ -97,10 +97,29 @@ const TradingViewChart: React.FC = () => {
        },
      },
      timeScale: {
-       timeVisible: true,
-       secondsVisible: false,
-     },
+      timeVisible: true,
+      secondsVisible: false,
+    },
+    localization: {
+      dateFormat: 'yyyy-MM-dd',
+      timeFormatter: (time: Time) => {
+        if (!time) return 'undefined';
+        
+        const timestamp = Number(time) * 1000;
+        const date = new Date(timestamp);
+        
+        // UTC 시간으로 변환
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const hours = String(date.getUTCHours()).padStart(2, '0');
+        const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+        
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+      },
+    },
    });
+   
 
    const areaSeries = chart.addAreaSeries({
     lineColor: '#2962FF',
