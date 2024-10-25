@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, HistogramData, Time, SeriesMarker } from 'lightweight-charts';
+import { createChart, HistogramData, Time } from 'lightweight-charts';
 import { generateData } from './data';
 
 const TradingViewChartBar: React.FC = () => {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<any>(null);
+  const seriesRef = useRef<any>(null);
   const [searchDate, setSearchDate] = useState(getTodayDate());
   const [searchTime, setSearchTime] = useState(getCurrentTime());
 
-  // 기존의 helper 함수들은 그대로 유지
   function getTodayDate() {
     const today = new Date();
     const year = today.getFullYear();
@@ -30,6 +30,22 @@ const TradingViewChartBar: React.FC = () => {
     const timestamp = Date.UTC(year, month - 1, day, hours, minutes, 0);
     return Math.floor(timestamp / 1000);
   };
+
+  // 실시간 데이터 생성 함수
+  function* getNextRealtimeUpdate(lastDataPoint: HistogramData) {
+    let lastTime = Number(lastDataPoint.time);
+    
+    while (true) {
+      // 마지막 데이터 시점부터 1분씩 증가
+      lastTime += 60; // 1분 = 60초
+      const newValue = Math.random() * (700 - 50) + 50;
+      
+      yield {
+        time: lastTime as Time,
+        value: newValue,
+      };
+    }
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +127,7 @@ const TradingViewChartBar: React.FC = () => {
       },
     });
 
-    // 히스토그램(바 차트) 시리즈로 변경
+    // 히스토그램 시리즈 생성 with autoscale 설정
     const barSeries = chart.addHistogramSeries({
       color: '#8297db',
       priceFormat: {
@@ -121,34 +137,43 @@ const TradingViewChartBar: React.FC = () => {
       },
       priceLineVisible: false,
       lastValueVisible: false,
+      autoscaleInfoProvider: () => ({
+        priceRange: {
+          minValue: 0,
+          maxValue: 800, // High Alarm(630)보다 충분히 높게 설정
+        },
+      }),
     });
 
-    // 데이터 포맷 변경
-    const data: HistogramData[] = generateData(2000).map((d) => ({
+    // 초기 데이터 설정
+    const initialData: HistogramData[] = generateData(2000).map((d) => ({
       time: d.time as Time,
       value: d.value,
     }));
 
-    barSeries.setData(data);
+    barSeries.setData(initialData);
 
-    // 차트 인스턴스와 데이터를 ref에 저장
-    chartRef.current = {
-      chart,
-      data,
-    };
+    // Highest, Lowest 가격선 추가
+    const highestPoint = initialData.reduce((max, point) => (point.value > max.value ? point : max), initialData[0]);
+    const lowestPoint = initialData.reduce((min, point) => (point.value < min.value ? point : min), initialData[0]);
 
-    // 초기 차트 표시 설정 (최신 31개 데이터)
-    const visibleRangeStartIndex = data.length - 31;
-    const visibleRangeEndIndex = data.length - 1;
+    barSeries.createPriceLine({
+      price: highestPoint.value,
+      color: '#666',
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: `Highest`,
+    });
 
-    if (visibleRangeStartIndex >= 0) {
-      chart.timeScale().setVisibleRange({
-        from: data[visibleRangeStartIndex].time as Time,
-        to: data[visibleRangeEndIndex].time as Time,
-      });
-    }
+    barSeries.createPriceLine({
+      price: lowestPoint.value,
+      color: '#666',
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: `Lowest`,
+    });
 
-    // 가격선 추가
+    // High/Low Alarm 가격선
     barSeries.createPriceLine({
       price: 630,
       color: 'red',
@@ -164,6 +189,47 @@ const TradingViewChartBar: React.FC = () => {
       axisLabelVisible: true,
       title: `Low Alarm`,
     });
+
+    // 초기 차트 표시 설정 (최신 31개 데이터)
+    const visibleRangeStartIndex = initialData.length - 31;
+    const visibleRangeEndIndex = initialData.length - 1;
+
+    if (visibleRangeStartIndex >= 0) {
+      chart.timeScale().setVisibleRange({
+        from: initialData[visibleRangeStartIndex].time as Time,
+        to: initialData[visibleRangeEndIndex].time as Time,
+      });
+    }
+
+    // 차트 인스턴스와 데이터를 ref에 저장
+    chartRef.current = {
+      chart,
+      data: initialData,
+    };
+    seriesRef.current = barSeries;
+
+    // 실시간 데이터 업데이트 설정
+    const lastDataPoint = initialData[initialData.length - 1];
+    const streamingDataProvider = getNextRealtimeUpdate(lastDataPoint);
+    
+    const intervalId = setInterval(() => {
+      const update = streamingDataProvider.next();
+      if (update.done) {
+        clearInterval(intervalId);
+        return;
+      }
+      
+      // 새 데이터 포인트 추가
+      barSeries.update(update.value);
+      
+      // data 배열 업데이트
+      chartRef.current.data.push(update.value);
+      
+      // 오래된 데이터 제거 (선택사항)
+      if (chartRef.current.data.length > 2000) {
+        chartRef.current.data.shift();
+      }
+    }, 60000); // 1분마다 업데이트
 
     // 툴팁 설정
     const toolTipWidth = 120;
@@ -195,7 +261,7 @@ const TradingViewChartBar: React.FC = () => {
     `;
     chartContainerRef.current.appendChild(toolTip);
 
-    // Crosshair 이벤트 처리
+    // Crosshair 이벤트 처리 - 그래프 값 기준 tooltip 위치
     chart.subscribeCrosshairMove(param => {
       if (
         param.point === undefined || 
@@ -233,19 +299,25 @@ const TradingViewChartBar: React.FC = () => {
           </div>
         `;
 
+        // 그래프 값을 기준으로 tooltip 위치 계산
+        const coordinate = barSeries.priceToCoordinate(value);
+        if (coordinate === null) {
+          return;
+        }
+
         let shiftedCoordinate = param.point.x - 50;
         shiftedCoordinate = Math.max(
           0,
           Math.min(chartContainerRef.current!.clientWidth - toolTipWidth, shiftedCoordinate)
         );
 
-        const coordinateY = param.point.y - toolTipHeight - toolTipMargin > 0
-          ? param.point.y - toolTipHeight - toolTipMargin
+        const coordinateY = coordinate - toolTipHeight - toolTipMargin > 0
+          ? coordinate - toolTipHeight - toolTipMargin
           : Math.max(
               0,
               Math.min(
                 chartContainerRef.current!.clientHeight - toolTipHeight - toolTipMargin,
-                param.point.y + toolTipMargin
+                coordinate + toolTipMargin
               )
             );
 
@@ -256,7 +328,9 @@ const TradingViewChartBar: React.FC = () => {
 
     chartContainerRef.current.style.cursor = 'crosshair';
 
+    // 컴포넌트 언마운트 시 정리
     return () => {
+      clearInterval(intervalId);
       chart.remove();
       if (toolTip && toolTip.parentNode) {
         toolTip.parentNode.removeChild(toolTip);
