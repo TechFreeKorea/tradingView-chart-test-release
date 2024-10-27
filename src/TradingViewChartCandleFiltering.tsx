@@ -3,21 +3,21 @@ import { createChart, HistogramData, Time } from 'lightweight-charts';
 import { generateData } from './data';
 
 /**
- * 실시간 데이터가 있는 Trading View 차트 컴포넌트
+ * 기간 필터링이 가능한 Trading View 차트 컴포넌트
  * - 히스토그램 형태로 데이터 표시
- * - 실시간 데이터 업데이트 (1분 간격)
  * - High/Low Alarm 표시
- * - 날짜/시간 검색 기능
+ * - 날짜 기간 검색 기능
  */
-const TradingViewChartBar: React.FC = () => {
+const TradingViewChartBarFiltering: React.FC = () => {
   // =========== Refs ===========
   const chartContainerRef = useRef<HTMLDivElement | null>(null);  // 차트 컨테이너 DOM 요소 참조
   const chartRef = useRef<any>(null);                            // 차트 인스턴스와 데이터 저장
   const seriesRef = useRef<any>(null);                          // 히스토그램 시리즈 인스턴스 저장
 
   // =========== State ===========
-  const [searchDate, setSearchDate] = useState(getTodayDate());  // 검색 날짜
-  const [searchTime, setSearchTime] = useState(getCurrentTime()); // 검색 시간
+  const [startDate, setStartDate] = useState(getTodayDate());    // 시작 날짜
+  const [endDate, setEndDate] = useState(getTodayDate());        // 종료 날짜
+  const [totalDataPoints, setTotalDataPoints] = useState(3000); // 초기 데이터 포인트 수
 
   // =========== Utility Functions ===========
   /**
@@ -32,72 +32,64 @@ const TradingViewChartBar: React.FC = () => {
   }
 
   /**
-   * 현재 시간을 HH:MM 형식으로 반환
+   * 날짜 문자열을 타임스탬프로 변환
+   * @param dateStr - YYYY-MM-DD 형식의 날짜 문자열
+   * @param isEndDate - true인 경우 해당 날짜의 23:59:59로 설정
    */
-  function getCurrentTime() {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
-  }
-
-  /**
-   * 날짜와 시간 문자열을 타임스탬프로 변환
-   */
-  const convertToTimestamp = (dateStr: string, timeStr: string) => {
+  const convertToTimestamp = (dateStr: string, isEndDate: boolean = false) => {
     const [year, month, day] = dateStr.split('-').map(Number);
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const timestamp = Date.UTC(year, month - 1, day, hours, minutes, 0);
-    return Math.floor(timestamp / 1000);
-  };
-
-  /**
-   * 실시간 데이터 생성기
-   * - 1분마다 새로운 데이터 포인트 생성
-   * - 마지막 데이터 포인트를 기준으로 시간 증가
-   */
-  function* getNextRealtimeUpdate(lastDataPoint: HistogramData) {
-    let lastTime = Number(lastDataPoint.time);
-    while (true) {
-      lastTime += 60; // 1분 = 60초
-      const newValue = Math.random() * (700 - 50) + 50;
-      yield {
-        time: lastTime as Time,
-        value: newValue,
-      };
+    const date = new Date(Date.UTC(year, month - 1, day));
+    
+    if (isEndDate) {
+      date.setUTCHours(23, 59, 59, 999);
     }
-  }
+    
+    return Math.floor(date.getTime() / 1000);
+  };
 
   // =========== Event Handlers ===========
   /**
    * 검색 폼 제출 핸들러
-   * - 입력된 날짜/시간에 해당하는 데이터 포인트로 차트 이동
+   * - 입력된 시작/종료 날짜 범위에 해당하는 데이터 포인트로 차트 이동
    */
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchDate || !searchTime || !chartRef.current) return;
+  // handleSearch 함수 내에서 데이터 부족 시 추가 생성 로직 추가
+const handleSearch = (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!startDate || !endDate || !chartRef.current) return;
 
-    const targetTimestamp = convertToTimestamp(searchDate, searchTime);
-    const data = chartRef.current.data;
+  const startTimestamp = convertToTimestamp(startDate);
+  const endTimestamp = convertToTimestamp(endDate, true);
+  let data = chartRef.current.data;
 
-    // 검색 시점과 가장 가까운(±30초) 데이터 포인트 찾기
-    const targetIndex = data.findIndex(
-      (point: HistogramData) => Math.abs(Number(point.time) - targetTimestamp) <= 30
-    );
+  // 시작 시점 이전의 데이터가 부족한 경우 추가 생성
+  const earliestDataTime = Number(data[0].time);
+  if (startTimestamp < earliestDataTime) {
+    const additionalData = generateData(2000, startTimestamp).map((d) => ({
+      time: d.time as Time,
+      value: d.value,
+    }));
+    data = [...additionalData, ...data];
+    setTotalDataPoints(prev => prev + 2000);
+    chartRef.current.data = data;
+    seriesRef.current.setData(data);
+  }
 
-    if (targetIndex !== -1) {
-      // 찾은 데이터 포인트 주변 30개 데이터 표시
-      const startIndex = Math.max(targetIndex - 30, 0);
-      const endIndex = Math.min(targetIndex + 1, data.length);
+  // 검색 기간 내의 데이터 찾기
+  const periodData = data.filter(
+    (point: HistogramData) => 
+      Number(point.time) >= startTimestamp && 
+      Number(point.time) <= endTimestamp
+  );
 
-      chartRef.current.chart.timeScale().setVisibleRange({
-        from: data[startIndex].time as Time,
-        to: data[targetIndex].time as Time,
-      });
-    } else {
-      alert('검색한 날짜와 시간에 해당하는 데이터가 없습니다.');
-    }
-  };
+  if (periodData.length > 0) {
+    chartRef.current.chart.timeScale().setVisibleRange({
+      from: periodData[0].time as Time,
+      to: periodData[periodData.length - 1].time as Time,
+    });
+  } else {
+    alert('선택한 기간에 해당하는 데이터가 없습니다.');
+  }
+};
 
   // =========== Chart Initialization ===========
   useEffect(() => {
@@ -106,12 +98,12 @@ const TradingViewChartBar: React.FC = () => {
     // 차트 기본 설정
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
-      height: 400,
+      height: 500,
       rightPriceScale: {
-        scaleMargins: { top: 0.1, bottom: 0.01 },
+        scaleMargins: { top: 0.02, bottom: 0.0 },
       },
       layout: {
-        textColor: 'black',
+        textColor: '#1E1F22',
         background: { color: 'white' },
       },
       grid: {
@@ -145,7 +137,7 @@ const TradingViewChartBar: React.FC = () => {
 
     // 히스토그램 시리즈 설정
     const barSeries = chart.addHistogramSeries({
-      color: '#8297db',
+      color: '#A4B3BF',
       priceFormat: {
         type: 'price',
         precision: 1,
@@ -162,7 +154,7 @@ const TradingViewChartBar: React.FC = () => {
     });
 
     // 초기 데이터 설정
-    const initialData: HistogramData[] = generateData(2000).map((d) => ({
+    const initialData: HistogramData[] = generateData(totalDataPoints).map((d) => ({
       time: d.time as Time,
       value: d.value,
     }));
@@ -220,25 +212,6 @@ const TradingViewChartBar: React.FC = () => {
     chartRef.current = { chart, data: initialData };
     seriesRef.current = barSeries;
 
-    // 실시간 데이터 업데이트 설정
-    const lastDataPoint = initialData[initialData.length - 1];
-    const streamingDataProvider = getNextRealtimeUpdate(lastDataPoint);
-
-    const intervalId = setInterval(() => {
-      const update = streamingDataProvider.next();
-      if (update.done) {
-        clearInterval(intervalId);
-        return;
-      }
-
-      // 새 데이터 추가 및 오래된 데이터 제거
-      barSeries.update(update.value);
-      chartRef.current.data.push(update.value);
-      if (chartRef.current.data.length > 2000) {
-        chartRef.current.data.shift();
-      }
-    }, 60000); // 1분마다 업데이트
-
     // =========== Tooltip 설정 ===========
     const toolTipWidth = 120;
     const toolTipHeight = 80;
@@ -259,12 +232,12 @@ const TradingViewChartBar: React.FC = () => {
       top: 12px;
       left: 12px;
       pointer-events: none;
-      border: 1px solid #2962FF;
+      border: 1px solid #677489;
       border-radius: 4px;
       background: white;
-      color: black;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      font-family: -apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif;
+      color: #1E1F22;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      font-family: 'Pretendard', sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     `;
@@ -299,7 +272,7 @@ const TradingViewChartBar: React.FC = () => {
 
         toolTip.style.display = 'block';
         toolTip.innerHTML = `
-          <div style="color: #2962FF; font-weight: bold;">Usage</div>
+          <div style="color: #677489; font-weight: bold;">Usage</div>
           <div style="font-size: 16px; margin: 4px 0px; color: black">
             ${value.toFixed(1)}
           </div>
@@ -339,7 +312,6 @@ const TradingViewChartBar: React.FC = () => {
 
     // 컴포넌트 언마운트 시 정리
     return () => {
-      clearInterval(intervalId);
       chart.remove();
       if (toolTip && toolTip.parentNode) {
         toolTip.parentNode.removeChild(toolTip);
@@ -349,7 +321,7 @@ const TradingViewChartBar: React.FC = () => {
 
   // =========== Render ===========
   return (
-    <div style={{ maxWidth: '1200px' }}>
+    <div>
       {/* 검색 폼 */}
       <form
         onSubmit={handleSearch}
@@ -362,18 +334,19 @@ const TradingViewChartBar: React.FC = () => {
       >
         <input
           type="date"
-          value={searchDate}
-          onChange={(e) => setSearchDate(e.target.value)}
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
           style={{
             padding: '0.5rem',
             borderRadius: '4px',
             border: '1px solid #ccc'
           }}
         />
+        <span>~</span>
         <input
-          type="time"
-          value={searchTime}
-          onChange={(e) => setSearchTime(e.target.value)}
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
           style={{
             padding: '0.5rem',
             borderRadius: '4px',
@@ -406,4 +379,4 @@ const TradingViewChartBar: React.FC = () => {
   );
 };
 
-export default TradingViewChartBar;
+export default TradingViewChartBarFiltering;

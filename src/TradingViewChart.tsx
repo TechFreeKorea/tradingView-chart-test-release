@@ -380,7 +380,7 @@ chart.subscribeCrosshairMove(param => {
        style={{
          position: 'relative',
          width: '100%',
-         height: '600px',
+         height: 'auto',
        }}
      />
    </div>

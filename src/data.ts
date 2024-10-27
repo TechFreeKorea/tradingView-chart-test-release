@@ -1,4 +1,4 @@
-export const generateData = (numPoints: number) => {
+export const generateData = (numPoints: number, startTime?: number) => {
   const data = [];
   let baseValue = 365;
 
